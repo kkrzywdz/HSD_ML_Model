@@ -14,6 +14,9 @@ import re
 # Projects = data['target_project'].apply(lambda x: re.sub(pattern, '', x)).unique()
 # np.sort(Projects)
 
+def remove_versions(project_name):
+    return re.sub(r'\s\d+(\.\d+)+$', '', project_name)
+
 class HSDEncoders:
     def __init__(self):
 

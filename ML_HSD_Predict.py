@@ -24,16 +24,18 @@ config.read('config.ini')
 # Access data from the INI file
 workdir = config.get('Workspace', 'directory')
 log_filename = os.path.join(workdir, config.get('Workspace', 'execution_log_filename'))
-stored_model = os.path.join(workdir, config.get('Model', 'stored_model_file'))
 stored_encoder_component = os.path.join(workdir, config.get('Model', 'stored_encoder_component_file'))
+stored_encoder_team_found = os.path.join(workdir, config.get('Model', 'stored_encoder_team_found_file'))
 stored_encoder_hardware = os.path.join(workdir, config.get('Model', 'stored_encoder_hardware_file'))
+stored_encoder_target_project = os.path.join(workdir, config.get('Model', 'stored_encoder_target_project_file'))
 stored_encoder_team = os.path.join(workdir, config.get('Model', 'stored_encoder_team_file'))
+stored_model = os.path.join(workdir, config.get('Model', 'stored_model_file'))
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(),  # To print logs to stdout
+        # logging.StreamHandler(),  # To print logs to stdout
         logging.FileHandler(log_filename)  # To log to a file in the current directory
     ]
 )
@@ -53,6 +55,10 @@ with open(stored_encoder_component, 'rb') as pk_file:
     encoder_component = pickle.load(pk_file)
 with open(stored_encoder_hardware, 'rb') as pk_file:
     encoder_hardware = pickle.load(pk_file)
+with open(stored_encoder_team_found, 'rb') as pk_file:
+    encoder_team_found = pickle.load(pk_file)
+with open(stored_encoder_target_project, 'rb') as pk_file:
+    encoder_target_project = pickle.load(pk_file)
 with open(stored_encoder_team, 'rb') as pk_file:
     encoder_team = pickle.load(pk_file)
 
@@ -65,14 +71,16 @@ def update_hsd(hsd, val_domain, update_tag=True):
     hsd_id = hsd['id']
     tag_list = hsd['tag'].split(',')
     hsd_url = 'https://hsdes-api.intel.com/rest/article/' + hsd_id
-    logging.info(f"attempt to update {hsd_url} , "
-                 f"update val_team_owner to {val_domain} ")
+    logging.info(f"attempt to update {hsd_url} , ")
+    logging.info(f"    new val_team_owner to {val_domain} ")
+    print(f"attempt to update {hsd_url} , ")
+    print(f"    new val_team_owner to {val_domain} ")
 
     if 'ValTeamAutoAssign' in tag_list:
         raise Exception("Article already tagged, You should not be here")
     tag_list.append('ValTeamAutoAssign')
     tag_list = ",".join(tag_list)
-    print('    new tags:', tag_list)
+    print(f"    new tags: {tag_list} ")
 
     # create payload
     if update_tag:
@@ -135,7 +143,6 @@ Returns prediction array
     print('team_found    :', hsd['team_found'])
     print('hardware      :', hsd['hardware'])
     print('target_project:', hsd['target_project'])
-    # print('val_team_owner:', hsd['val_team_owner'])
     # print('TAGs          :', hsd['tag'])
 
     # workaround for requirements
@@ -152,39 +159,54 @@ Returns prediction array
         'title': [hsd['title']],
         'description': [hsd['description']]
     })
-    try:
-        encoded_component = encoder_component.transform(data_frame[['component', 'team_found']])
-    except:
-        log_message = f"[component] or [team_found] not encounter before.. need to retrain model\n" \
-                      f"    component       : {hsd['component']} \n" \
-                      f"    team_found      :'{hsd['team_found']}\n"
-        print('------------------ Exception ------------------------')
-        print(log_message)
-        logging.error(log_message)
-        print('-----------------------------------------------------')
-        return [(0, 'Error - Missing component or team_found')]
-    try:
-        encoded_hardware = encoder_hardware.transform(data_frame[['hardware', 'target_project']])
-    except:
-        log_message = f"[hardware] or [target_project] not encounter before.. need to retrain model \n" \
-                      f"    hardware       : {hsd['hardware']} \n" \
-                      f"    target_project :'{hsd['target_project']}\n"
-        print('------------------ Exception ------------------------')
-        print(log_message)
-        logging.error(log_message)
-        print('-----------------------------------------------------')
-        return [(0, 'Error - Missing hardware or target_project')]
+
+    # preprocess input data
+    data_frame['target_project'] = data_frame['target_project'].apply(DataEncoders.remove_versions)
 
     encoded_title = DataEncoders.encoder_keyword(data_frame['title'], DataEncoders.dictionary)
     encoded_description = DataEncoders.encoder_keyword(data_frame['description'], DataEncoders.full_dictionary)
     encoded_os = DataEncoders.encoder_mapping(data_frame['operating_system'], DataEncoders.os_mapping, "OS mapping")
 
+    # 4 component
+    try:
+        encoded_component = encoder_component.transform(data_frame[['component']])
+    except:
+        logging.error(f"component [{hsd['component']}] not encounter before.. need to retrain model")
+        print(f"component [{hsd['component']}] not encounter before.. Skipping")
+        return [(0, 'Error - Missing component or team_found')]
+
+    # hardware
+    try:
+        encoded_hardware = encoder_hardware.transform(data_frame[['hardware']])
+    except:
+        logging.error(f"hardware [{hsd['hardware']}] not encounter before.. need to retrain model")
+        print(f"hardware [{hsd['hardware']}] not encounter before.. Skipping")
+        return [(0, 'Error - Missing component or team_found')]
+
+    # target_project
+    try:
+        encoded_target_project = encoder_target_project.transform(data_frame[['target_project']])
+    except:
+        logging.error(f"target_project [{hsd['target_project']}] not encounter before.. need to retrain model")
+        print(f"target_project [{hsd['target_project']}] not encounter before.. Skipping")
+        return [(0, 'Error - Missing component or team_found')]
+
+    # team_found
+    try:
+        encoded_team_found = encoder_team_found.transform(data_frame[['team_found']])
+    except:
+        logging.error(f"team_found [{hsd['team_found']}] not encounter before.. need to retrain model")
+        print(f"team_found [{hsd['team_found']}] not encounter before.. Skipping")
+        return [(0, 'Error - Missing component or team_found')]
+
     # Make predictions
     predictions = model.predict(
         {"component": encoded_component,
+         "team_found": encoded_team_found,
          'hardware': encoded_hardware,
+         "target_project": encoded_target_project,
          'title': encoded_title,
-         "os": encoded_os,
+         'os': encoded_os,
          'description': encoded_description})
 
     # Get the indices of the top N predictions
@@ -203,12 +225,8 @@ log_message = f"execution started WW{week_number} [{current_datetime.strftime('%
               f" - {current_datetime.strftime('%H:%M')}"
 
 logging.info(f"----------------------------------------------------------------")
-logging.info(f"----------------------------------------------------------------")
 logging.info(log_message)
 logging.info(f"----------------------------------------------------------------")
-logging.info(f"----------------------------------------------------------------")
-
-# and Load model and encoders
 
 # New and updated sw defects 24h
 # https://hsdes.intel.com/appstore/community/#/1208188470?queryId=18013029829
@@ -231,7 +249,7 @@ print('retrieved ', len(data_rows), ' articles')
 for i, article in enumerate(data_rows):
     print("")
     print(i + 1, '/', len(data_rows), ' [', article['val_team_owner'], ']', article['id'], article['title'][:72])
-    logging.info(f"[{i+1}/{len(data_rows)}] - {article['id']} {article['title'][:72]} .")
+    logging.info(f"[{i + 1}/{len(data_rows)}] - {article['id']} {article['title'][:72]} .")
     top_prediction = ml_predict(article)
 
     top_probability = top_prediction[0][0]  # Probability value of the top prediction
@@ -243,9 +261,10 @@ for i, article in enumerate(data_rows):
     for position, prediction in enumerate(top_prediction):
         print(f"{position + 1}. Prediction: {prediction[0]:.2f}% | Category: {prediction[1]}")
 
-    if top_probability > 90:
+    if False:  # top_probability > 90:
         logging.info('probability > 90% - updating without asking')
-        update_hsd(article, top_prediction[0][1], True)  # adding TAG to exclude article from training data.
+        input("press any Key... (any means Enter)")
+        update_hsd(article, top_prediction[0][1], False)  # adding TAG to exclude article from training data.
     else:
         logging.info('Supervision needed')
         print('0. No SW Validation required')
