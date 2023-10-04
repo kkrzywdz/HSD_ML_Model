@@ -14,6 +14,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras import metrics
 import datetime
 
+import matplotlib.pyplot as plt
 
 # Create a new ConfigParser instance
 config = configparser.ConfigParser()
@@ -58,10 +59,10 @@ logging.info(log_message)
 logging.info(f"----------------------------------------------------------------")
 logging.info(f"----------------------------------------------------------------")
 
-logging.debug("TensorFlow version:", tf.__version__)
-logging.debug("pandas version:", pd.__version__)
-logging.debug("numpy version:", np.__version__)
-logging.debug("defect encoder version", DataEncoders.__version__)
+logging.info(f"TensorFlow version:{tf.__version__}")
+logging.info(f"pandas version:{pd.__version__}")
+logging.info(f"numpy version:{ np.__version__}")
+logging.info(f"defect encoder version{ DataEncoders.__version__}")
 
 # Load the data from CSV file
 logging.info(f"loading data from :{training_data_file}")
@@ -75,7 +76,6 @@ output_df = data[['val_team_owner']].copy()
 # preprocess input data.
 # Apply the function to the 'project' column
 input_df['target_project'] = input_df['target_project'].apply(DataEncoders.remove_versions)
-
 
 # for onehot Single will be enough, but I for training I will use 2
 encoder_component = OneHotEncoder(sparse_output=False)
@@ -94,7 +94,7 @@ logging.debug(f"input data encoded ")
 
 # Split the data into train and test sets
 logging.info(f"Split the data into train and test sets")
-in_train, in_test, out_train, out_test = train_test_split(input_df, output_df, test_size=0.1, random_state=32)
+in_train, in_test, out_train, out_test = train_test_split(input_df, output_df, test_size=0.10, random_state=32)
 print('in_train shape :', in_train.shape)
 print('in_test shape  :', in_test.shape)
 print('out_train shape:', out_train.shape)
@@ -169,23 +169,22 @@ input_os = tf.keras.Input(shape=in_os_encoded.shape[1], name='os')
 input_title = tf.keras.Input(shape=in_title_encoded.shape[1], name='title')
 input_description = tf.keras.Input(shape=in_description_encoded.shape[1], name='description')
 
-dense_layer_title = tf.keras.layers.Dense(2 * output, activation='relu')(input_title)
-dense_layer_description = tf.keras.layers.Dense(2 * output, activation='relu')(input_description)
-#dense_layer_teamFound = tf.keras.layers.Dense(in_team_found_encoded.shape[1], activation='relu')(input_team_fund)
-#concatenated_title_desc = tf.keras.layers.concatenate([dense_layer_title, dense_layer_description,dense_layer_teamFound])
+dense_layer_title = tf.keras.layers.Dense(4 * output, activation='relu')(input_title)
+dense_layer_description = tf.keras.layers.Dense(4 * output, activation='relu')(input_description)
+
 concatenated_title_desc = tf.keras.layers.concatenate([dense_layer_title, dense_layer_description])
 dense_layer_title_desc = tf.keras.layers.Dense(2 * output, activation='relu')(concatenated_title_desc)
 
 dense_layer_hardware = tf.keras.layers.Dense(2 * output, activation='relu')(input_hardware)
 dense_layer_os = tf.keras.layers.Dense(2 * output, activation='relu')(input_os)
+
 concatenated_hardware_os = tf.keras.layers.concatenate([dense_layer_hardware, dense_layer_os])
-dense_layer_hw_os = tf.keras.layers.Dense(2 * output, activation='relu')(concatenated_hardware_os)
+dense_layer_hw_os = tf.keras.layers.Dense(output * 2, activation='relu')(concatenated_hardware_os)
+
 
 dense_layer_target_project = tf.keras.layers.Dense(2 * output, activation='tanh')(input_target_project)
-dense_layer_component = tf.keras.layers.Dense(3 * output, activation='tanh')(input_component)
-
+dense_layer_component = tf.keras.layers.Dense(2 * output, activation='tanh')(input_component)
 concatenated_tp_comp = tf.keras.layers.concatenate([dense_layer_target_project, dense_layer_component])
-
 
 concatenated_all = tf.keras.layers.concatenate([
     #dense_layer_component,
@@ -195,8 +194,8 @@ concatenated_all = tf.keras.layers.concatenate([
     dense_layer_hw_os])
 
 # Additional layers on the concatenated output
-dense_layer_all1 = tf.keras.layers.Dense(3 * output, activation='elu')(concatenated_all)
-dense_layer_all2 = tf.keras.layers.Dense(3 * output, activation='elu')(dense_layer_all1)
+dense_layer_all1 = tf.keras.layers.Dense(4 * output, activation='elu')(concatenated_all)
+dense_layer_all2 = tf.keras.layers.Dense(2 * output, activation='elu')(dense_layer_all1)
 
 # Output layer
 output = tf.keras.layers.Dense(out_team_encoded.shape[1], activation='softmax',
@@ -269,12 +268,19 @@ with open(stored_encoder_team, 'wb') as f:
     pickle.dump(encoder_team, f)
 
 logging.info(f'Model stored in : {stored_model}')
-logging.info(f'component amd team_found encoder stores in : {stored_encoder_component}')
-logging.info(f'hardware and project encoder stores in : {stored_encoder_hardware}')
+logging.info(f'component  encoder stores in : {stored_encoder_component}')
+logging.info(f'team_found encoder stores in : {stored_encoder_hardware}')
+logging.info(f'hardware encoder stores in : {stored_encoder_hardware}')
+logging.info(f'project encoder stores in : {stored_encoder_target_project}')
 logging.info(f'val team encoder stores in : {stored_encoder_team}')
+logging.info(f'team_found encoder stores in : {stored_encoder_team_found}')
 
-#
-#
+
+
+
+
+
+
 #
 # HERE WILL BE MARKUP TO TRY USING MODEL WITH
 '''
