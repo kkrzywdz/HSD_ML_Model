@@ -3,6 +3,7 @@ import os
 import logging
 import configparser
 import ML_data_encoders as DataEncoders
+
 import pandas as pd
 import numpy as np
 import sklearn
@@ -269,14 +270,14 @@ for i, article in enumerate(data_rows):
         logging.info('Supervision needed')
         print('0. No SW Validation required')
         print('N. Skip record')
-        choice = input(f"Choose a team - default {top_prediction[0][1]}")
+        choice = input(f"Choose a team - default: \n          {top_prediction[0][1]} \n ")
         if choice == '':
             choice = "1"
         if choice == "N":
             continue
         elif choice in ["1", "2", "3", "4", "5"]:
             validationDomain = top_prediction[int(choice) - 1][1]
-            update_hsd(article, validationDomain, False)
+            update_hsd(article, validationDomain, True)
         elif choice == "0":
             update_hsd(article, 'No Validation required', True)
         else:
