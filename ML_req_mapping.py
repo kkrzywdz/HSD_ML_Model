@@ -39,7 +39,7 @@ reqs = pd.read_csv(req_data_file)
 
 # Split the data into input features (input) and target variable (output)
 input_df = data[['title', 'description']].copy()
-req_df = reqs[['title', 'description']].copy()
+req_df = reqs[['id', 'title', 'description']].copy()
 output_df = data[['val_team_owner']].copy()
 
 input_df['des_copy'] = data['description'].apply(lambda x: re.sub(r'[^A-Za-z\s]', ' ', x)).str.replace('\xa0', ' ')
@@ -88,14 +88,15 @@ print('out_test shape :', out_test.shape)
 
 in_title_encoded = DataEncoders.encoder_keyword(in_train['title'], DataEncoders.dictionary)
 in_description_encoded = DataEncoders.encoder_keyword(in_train['description'], DataEncoders.full_dictionary)
+
 out_team_encoded = encoder_team.transform(out_train)
 
 test_in_title_encoded = DataEncoders.encoder_keyword(in_test['title'], DataEncoders.dictionary)
 test_in_description_encoded = DataEncoders.encoder_keyword(in_test['description'], DataEncoders.full_dictionary)
 
 test_out_team_encoded = encoder_team.transform(out_test)
-output = out_team_encoded.shape[1] * 4
-lstm_units = 100
+output = out_team_encoded.shape[1] * 8
+lstm_units = 300
 vocab_size = len(word_index)
 
 print(f"\n\nbuilding the model\n\n")
@@ -111,13 +112,9 @@ input_title_token = tf.keras.Input(shape=(max_length_title,), name='title_token'
 input_description_token = tf.keras.Input(shape=(max_length_desc,), name='description_token')
 
 # Embedding layer for text data
-embedding_layer = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=output*4)
+embedded_title = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=output*2)(input_title_token)
+embedded_description = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=output*2)(input_description_token)
 
-embedded_title = embedding_layer(input_title)
-embedded_description = embedding_layer(input_description)
-
-# LSTM layers for text data
-lstm_units = 100  # You can adjust this value as needed
 
 lstm_title = LSTM(units=lstm_units)(embedded_title)
 lstm_description = LSTM(units=lstm_units)(embedded_description)
@@ -125,8 +122,8 @@ concatenated_title_desc_token = Concatenate()([lstm_title, lstm_description])
 
 dense_layer_title_desc_token = tf.keras.layers.Dense(2 * output, activation='relu')(concatenated_title_desc_token)
 
-dense_layer_title = tf.keras.layers.Dense(4 * output, activation='relu')(input_title)
-dense_layer_description = tf.keras.layers.Dense(4 * output, activation='relu')(input_description)
+dense_layer_title = tf.keras.layers.Dense(2 * output, activation='relu')(input_title)
+dense_layer_description = tf.keras.layers.Dense(2 * output, activation='relu')(input_description)
 
 concatenated_title_desc = tf.keras.layers.concatenate([dense_layer_title, dense_layer_description])
 dense_layer_title_desc = tf.keras.layers.Dense(2 * output, activation='relu')(concatenated_title_desc)
@@ -134,12 +131,16 @@ dense_layer_title_desc = tf.keras.layers.Dense(2 * output, activation='relu')(co
 concatenated_all = tf.keras.layers.concatenate([dense_layer_title_desc, dense_layer_title_desc_token])
 
 # Additional layers on the concatenated output
-dense_layer_all1 = tf.keras.layers.Dense(4 * output, activation='elu')(concatenated_all)
-dense_layer_all2 = tf.keras.layers.Dense(2 * output, activation='elu')(dense_layer_all1)
+dense_layer_all1 = tf.keras.layers.Dense(4 * output, activation='relu')(concatenated_all)
+dense_layer_all2 = tf.keras.layers.Dense(3 * output, activation='relu')(dense_layer_all1)
+
 
 # Output layer
 output = tf.keras.layers.Dense(out_team_encoded.shape[1], activation='softmax',
                                name='val_domain')(dense_layer_all2)
+
+#output = tf.keras.layers.Dense(out_team_encoded.shape[1], activation=None,
+#                               name='val_domain')(dense_layer_all2)
 
 # Create the model
 model = tf.keras.Model(
@@ -187,6 +188,51 @@ print(f'Test accuracy:{accuracy}')
 print(f'Test precision:{precision}')
 
 
+in_title_encoded = DataEncoders.encoder_keyword(req_df['title'], DataEncoders.dictionary)
+in_description_encoded = DataEncoders.encoder_keyword(req_df['description'], DataEncoders.full_dictionary)
+
+predictions = model.predict(
+    {
+     'title': in_title_encoded,
+     'title_token': req_df['title_copy'],
+     'description': in_description_encoded,
+     'description_token': req_df['des_copy']},
+    )
+
+# Create a DataFrame to store the results
+results_df = pd.DataFrame({
+    'ID': req_df['id'],
+    'Title': req_df['title'],
+})
+
+# Add columns for each output category
+for i in range(37):  # Assuming 37 output categories
+    cat = encoder_team.categories_[0][i]
+    results_df[f'{cat} - {i+1}'] = predictions[:, i]
+
+# Save the results to a CSV file
+results_df.to_csv('predicted_results.csv', index=False)
+
+
+
+'''# Make predictions
+    predictions = model.predict(
+        {"component": encoded_component,
+         "team_found": encoded_team_found,
+         'hardware': encoded_hardware,
+         "target_project": encoded_target_project,
+         'title': encoded_title,
+         'os': encoded_os,
+         'description': encoded_description})
+
+    # Get the indices of the top N predictions
+    top_n = 5
+    top_indices = np.argsort(predictions[0])[::-1][:top_n]
+
+    # Map indices to category names
+    categories = encoder_team.categories_[0]
+
+    return [(predictions[0][i] * 100, categories[i]) for i in top_indices]'''
 
 
 # Save trained model anf fitted encoders

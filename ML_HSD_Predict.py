@@ -256,15 +256,15 @@ for i, article in enumerate(data_rows):
     top_probability = top_prediction[0][0]  # Probability value of the top prediction
     if top_probability < 10:
         logging.warning("Skipping HSD-UPDATE")
-        input(f"Press ENTER to continue....")
+        #input(f"Press ENTER to continue....")
         continue
 
     for position, prediction in enumerate(top_prediction):
         print(f"{position + 1}. Prediction: {prediction[0]:.2f}% | Category: {prediction[1]}")
 
-    if False:  # top_probability > 90:
+    if top_probability > 90:
         logging.info('probability > 90% - updating without asking')
-        input("press any Key... (any means Enter)")
+        #input("press any Key... (any means Enter)")
         update_hsd(article, top_prediction[0][1], False)  # adding TAG to exclude article from training data.
     else:
         logging.info('Supervision needed')
